@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"io/ioutil"
 	"regexp"
 	"sort"
@@ -34,54 +35,37 @@ func main() {
 		output.Grow(2 * len(b))
 		output.Write(b)
 
-		printf := func(format string, args ...interface{}) {
-			fmt.Fprintf(output, format, args...)
-		}
-
 		// The first pass aggregates all versionned types under a common base name.
 		// We do this to have access to all the fields that the high-level types
 		// must contain.
-		types := map[string][]*ast.TypeSpec{}
-		baseTypeRegexp := regexp.MustCompile(`(.*)V[1-9]+$`)
+		baseTypes := map[string][]*ast.TypeSpec{}
+		baseTypeRegexp := regexp.MustCompile(`(.+)V[1-9]+$`)
+		subTypes := map[string][]*ast.TypeSpec{}
+		subTypeRegexp := regexp.MustCompile(`(.+)V[1-9]+(.+)`)
+		revSubTypes := map[string]string{}
 
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.TypeSpec:
 				typeName := x.Name.Name
-				if baseTypeRegexp.MatchString(typeName) {
+				switch {
+				case baseTypeRegexp.MatchString(typeName):
 					baseTypeName := baseTypeRegexp.ReplaceAllString(typeName, "$1")
-					types[baseTypeName] = append(types[baseTypeName], x)
+					baseTypes[baseTypeName] = append(baseTypes[baseTypeName], x)
+				case subTypeRegexp.MatchString(typeName):
+					subTypeName := subTypeRegexp.ReplaceAllString(typeName, "$1$2")
+					subTypes[subTypeName] = append(subTypes[subTypeName], x)
+					revSubTypes[typeName] = subTypeName
 				}
 			}
 			return true
 		})
 
-		// Sorted list of all type names, used to make the output deterministic.
-		baseTypeNames := make([]string, 0, len(types))
-		for baseTypeName := range types {
-			baseTypeNames = append(baseTypeNames, baseTypeName)
-		}
-		sort.Strings(baseTypeNames)
-
 		// Generate the type definition; we match the last type because there are
 		// very few cases where fields were removed in the kafka protocol, and it
 		// seems more sane to avoid building support for deprecated features.
-		for _, baseTypeName := range baseTypeNames {
-			typeList := types[baseTypeName]
-			lastTypeVersion := typeList[len(typeList)-1]
-
-			printf("type %s struct {\n", baseTypeName)
-
-			for _, field := range lastTypeVersion.Type.(*ast.StructType).Fields.List {
-				for _, ident := range field.Names {
-					fieldName := ident.Name
-					fieldType := typeNameOf(field.Type)
-					printf("%s %s\n", fieldName, fieldType)
-				}
-			}
-
-			printf("}\n\n")
-		}
+		printTypes(output, baseTypes, revSubTypes)
+		printTypes(output, subTypes, revSubTypes)
 
 		if err := ioutil.WriteFile(filePath, output.Bytes(), 0644); err != nil {
 			panic(err)
@@ -89,12 +73,46 @@ func main() {
 	}
 }
 
-func typeNameOf(expr ast.Expr) string {
+func printTypes(output io.Writer, types map[string][]*ast.TypeSpec, replace map[string]string) {
+	typeNames := make([]string, 0, len(types))
+	for typeName := range types {
+		typeNames = append(typeNames, typeName)
+	}
+	sort.Strings(typeNames)
+
+	printf := func(format string, args ...interface{}) {
+		fmt.Fprintf(output, format, args...)
+	}
+
+	for _, typeName := range typeNames {
+		typeList := types[typeName]
+		lastTypeVersion := typeList[len(typeList)-1]
+
+		printf("type %s struct {\n", typeName)
+
+		for _, field := range lastTypeVersion.Type.(*ast.StructType).Fields.List {
+			for _, ident := range field.Names {
+				fieldName := ident.Name
+				fieldType := typeNameOf(field.Type, replace)
+				printf("%s %s\n", fieldName, fieldType)
+			}
+		}
+
+		printf("}\n\n")
+	}
+}
+
+func typeNameOf(expr ast.Expr, replace map[string]string) string {
 	switch x := expr.(type) {
 	case *ast.Ident:
-		return x.Name
+		name := x.Name
+		repl := replace[name]
+		if repl != "" {
+			return repl
+		}
+		return name
 	case *ast.ArrayType:
-		return "[]" + typeNameOf(x.Elt)
+		return "[]" + typeNameOf(x.Elt, replace)
 	default:
 		panic(x)
 	}
