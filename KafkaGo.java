@@ -29,13 +29,11 @@ public class KafkaGo {
         b.append("const (\n");
 
         for (ApiKeys key: ApiKeys.values()) {
-            if (!key.clusterAction) {
-                b.append("\t");
-                b.append(key.name);
-                b.append(" = APIKey(");
-                b.append(key.id);
-                b.append(")\n");
-            }
+            b.append("\t");
+            b.append(key.name);
+            b.append(" APIKey = ");
+            b.append(key.id);
+            b.append("\n");
         }
 
         b.append(")\n\n");
@@ -44,20 +42,14 @@ public class KafkaGo {
 
         b.append("var MaxAPIVersion = [...]APIVersion{\n");
         for (ApiKeys key: ApiKeys.values()) {
-            if (!key.clusterAction) {
-                b.append(key.name);
-                b.append(": ");
-                b.append(key.requestSchemas.length - 1);
-                b.append(",\n");
-            }
+            b.append(key.name);
+            b.append(": ");
+            b.append(key.requestSchemas.length - 1);
+            b.append(",\n");
         }
         b.append("}\n\n");
 
         for (ApiKeys key: ApiKeys.values()) {
-            if (key.clusterAction) {
-              continue;
-            }
-
             Schema[] requests = key.requestSchemas;
             for (int version = 0; version < requests.length; version++) {
                 appendSchema(b, requests[version], baseRequestNameOf(key, version));
@@ -114,12 +106,10 @@ public class KafkaGo {
         b.append("\tswitch apiKey {\n");
 
         for (ApiKeys key: ApiKeys.values()) {
-            if (!key.clusterAction) {
-                b.append("\tcase ");
-                b.append(key.name);
-                b.append(":\n");
-                b.append("\t\treturn New" + key.name + "Request(apiVersion)\n");
-            }
+            b.append("\tcase ");
+            b.append(key.name);
+            b.append(":\n");
+            b.append("\t\treturn New" + key.name + "Request(apiVersion)\n");
         }
 
         b.append("\tdefault:\n");
@@ -131,12 +121,10 @@ public class KafkaGo {
         b.append("\tswitch apiKey {\n");
 
         for (ApiKeys key: ApiKeys.values()) {
-            if (!key.clusterAction) {
-                b.append("\tcase ");
-                b.append(key.name);
-                b.append(":\n");
-                b.append("\t\treturn New" + key.name + "Response(apiVersion)\n");
-            }
+            b.append("\tcase ");
+            b.append(key.name);
+            b.append(":\n");
+            b.append("\t\treturn New" + key.name + "Response(apiVersion)\n");
         }
 
         b.append("\tdefault:\n");
