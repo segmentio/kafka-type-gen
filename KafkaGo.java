@@ -106,9 +106,9 @@ public class KafkaGo {
         b.append("\n");
 
         b.append("type Marshaler interface { Marshal(*Writer) }\n\n");
-        b.append("type Unmarshaler interface { Ummarshaler(*Reader) }\n\n");
+        b.append("type Unmarshaler interface { Unmarshal(*Reader) }\n\n");
         b.append("type Request interface { Marshaler; Unmarshaler }\n\n");
-        b.append("type Response interface {Marshaler; Unmarshaler }\n\n");
+        b.append("type Response interface { Marshaler; Unmarshaler }\n\n");
 
         b.append("func NewRequest(apiKey APIKey, apiVersion APIVersion) Request {\n");
         b.append("\tswitch apiKey {\n");
@@ -213,10 +213,10 @@ public class KafkaGo {
                 Type subType = ((ArrayOf) field.def.type).type();
                 String fieldType = toGoSubType((ArrayOf) field.def.type, baseName, fieldName);
 
-                // w.WriteInt32(int32(len(rx.FIELD)))
-                b.append("w.WriteInt32(int32(len(rx.");
+                // w.WriteArrayLength(len(rx.FIELD)))
+                b.append("w.WriteArrayLength(len(rx.");
                 b.append(fieldName);
-                b.append(")))\n");
+                b.append("))\n");
 
                 // for i := range rx.FIELD
                 b.append("for i := range rx.");
@@ -267,9 +267,9 @@ public class KafkaGo {
                 String fieldType = toGoSubType((ArrayOf) field.def.type, baseName, fieldName);
                 String nVar = "n" + varIndex;
                 varIndex++;
-                // n := int(r.ReadInt32())
+                // n := r.ReadArrayLength()
                 b.append(nVar);
-                b.append(" := int(r.ReadInt32())\n");
+                b.append(" := r.ReadArrayLength()\n");
 
                 // rx.FIELD = make([]TYPE, n)
                 b.append("rx.");
@@ -280,7 +280,7 @@ public class KafkaGo {
                 b.append(nVar);
                 b.append(")\n");
 
-                b.append("for i := 0; i < n; i++ {\n");
+                b.append("for i := 0; i < " + nVar + "; i++ {\n");
                 // rx.FIELD[i] = r.ReadTYPE() | rx.FIELD[i].Unmarshal(r)
                 b.append("rx.");
                 b.append(fieldName);
@@ -289,6 +289,7 @@ public class KafkaGo {
                 if (readMethod != "") {
                     b.append(" = r.");
                     b.append(readMethod);
+                    b.append("()\n");
                 } else {
                     b.append(".Unmarshal(r)\n");
                 }
@@ -328,7 +329,9 @@ public class KafkaGo {
         case "BOOLEAN":
             return "ReadBool";
         case "BYTES":
-            return "ReadBytes";
+            return "ReadFixBytes";
+        case "NULLABLE_BYTES":
+            return "ReadNullableBytes";
         case "INT8":
             return "ReadInt8";
         case "INT16":
@@ -338,9 +341,9 @@ public class KafkaGo {
         case "INT64":
             return "ReadInt64";
         case "STRING":
-            return "ReadString";
+            return "ReadFixString";
         case "NULLABLE_STRING":
-            return "ReadString";
+            return "ReadNullableString";
         case "RECORDS":
             return "ReadRecords";
         case "ARRAY(INT32)":
@@ -353,9 +356,11 @@ public class KafkaGo {
     static String toWriteMethod(Type kafkaType) {
         switch (kafkaType.toString()) {
         case "BOOLEAN":
-            return "ReadBool";
+            return "WriteBool";
         case "BYTES":
-            return "WriteBytes";
+            return "WriteFixBytes";
+        case "NULLABLE_BYTES":
+            return "WriteNullableBytes";
         case "INT8":
             return "WriteInt8";
         case "INT16":
@@ -365,9 +370,9 @@ public class KafkaGo {
         case "INT64":
             return "WriteInt64";
         case "STRING":
-            return "WriteString";
+            return "WriteFixString";
         case "NULLABLE_STRING":
-            return "WriteString";
+            return "WriteNullableString";
         case "RECORDS":
             return "WriteRecords";
         case "ARRAY(INT32)":
